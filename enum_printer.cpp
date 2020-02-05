@@ -4,61 +4,13 @@
    $Revision: $
    $Creator: Bryn Murrell $
    ======================================================================== */
-#include "CommonDefines.h"
+#include "blib_utils.h"
 #include <cstdio>
 #include <string>
 #include "Parsing.h"
 #include <vector>
 #include "len_string.h"
-
-flocal inline b32 is_cpp_or_h_file(char* file)
-{
-    const char* h = ".h";
-    const char* cpp = ".cpp";
-    char* c = file;
-    while (*c != '.')
-    {
-        c++;
-    }
-    if (c)
-    {
-        if (strcmp(c,h))
-        {
-            return true;
-        }
-        if (strcmp(c,cpp))
-        {
-            return true;
-        }
-    }
-    return false;
-}
-
-flocal b32 find_next_enum_in_file(char** file)
-{
-    Tokenizer tok = {};
-    tok.at = *file;
-    b32 should_break = false;
-    b32 ret_val = false;
-    while (!should_break)
-    {
-        Token t = getToken(&tok);
-        if (tokenEquals(token(TOKEN_IDENTIFIER, 4, "enum"), t))
-        {
-            should_break = true;
-            ret_val = true;
-        }
-        if (tokenEquals(token(TOKEN_END, 0, "\0"), t))
-        {
-            
-            should_break = true;
-            ret_val = false;
-        }
-    }
-    
-    *file = tok.at;
-    return ret_val;
-}
+#include "DebugFileIO.cpp"
 
 flocal void add_enum_function_to_string(len_string* h_file,
                                               char** enum_start_string)
@@ -99,7 +51,7 @@ flocal void add_enum_function_to_string(len_string* h_file,
                     //TODO verify if enums behave this way
                     pair.value = running_value++;
                 }
-                else if (next_tok.type == TOKEN_EQUALS)
+                else if (next_tok.type == TOKEN_ASSIGNMENT)
                 {
                     
                     next_tok = getToken(&tok);
@@ -149,22 +101,8 @@ flocal void add_enum_function_to_string(len_string* h_file,
     }
 
     char enum_name_null_terminated_array[256];
-#if 0 
-    for (int i = 0; i < enum_name.length+1; i++)
-    {
-        if (i == enum_name.length)
-        {
-            enum_name_null_terminated_array[i] = '\0';
-        }
-        else
-        {
-            enum_name_null_terminated_array[i] = enum_name.text[i];
-        }               
-    }
-#else
     char* enum_name_null_terminated = &enum_name_null_terminated_array[0];
     sub_str_to_null_terminated(enum_name.text, enum_name.length, (char**)&enum_name_null_terminated);
-#endif
     
     append_to_len_string(h_file, "\n");
     char temp[256];
@@ -188,6 +126,7 @@ flocal void add_enum_function_to_string(len_string* h_file,
         append_to_len_string(h_file, (char*)temp);
         
     }
+
     append_to_len_string(h_file, "\treturn s;\n");
     append_to_len_string(h_file, "}\n");
     
@@ -212,9 +151,90 @@ flocal void add_enum_function_to_string(len_string* h_file,
         
     }
     append_to_len_string(h_file, "\treturn s;\n");
-    append_to_len_string(h_file, "}\n");
+    append_to_len_string(h_file, "}\n\n");
     
-        //TODO: finish this
+    sprintf((char*)temp,
+            "flocal u32 %s_name_to_bits(char* name)\n",
+            enum_name_null_terminated);
+    append_to_len_string(h_file, (char*)temp);
+    append_to_len_string(h_file, "{\n");
+    for (int i = 0; i < all_enum_identifier_values.size(); i++)
+    {
+        char field_null_terminated_array[256];
+        char* field_null_terminated = &field_null_terminated_array[0];
+        sub_str_to_null_terminated(all_enum_identifier_values[i].identifier.text,
+                                   all_enum_identifier_values[i].identifier.length,
+                                   (char**)&field_null_terminated);
+        
+        sprintf((char*)temp,"\tif ( streq(\"%s\", name, strlen(name)) )\n\t{\n", field_null_terminated);
+        append_to_len_string(h_file, (char*)temp);
+        sprintf((char*)temp,"\t\treturn (u32)%s;\n\t}\n", field_null_terminated);
+        append_to_len_string(h_file, (char*)temp);
+        
+    }
+
+    append_to_len_string(h_file, "}\n\n");
+    
+    sprintf((char*)temp,
+            "global_variable char* %s_name_arr[] = \n",
+            enum_name_null_terminated);
+    append_to_len_string(h_file, (char*)temp);
+    append_to_len_string(h_file, "{\n");
+    for (int i = 0; i < all_enum_identifier_values.size(); i++)
+    {
+        char field_null_terminated_array[256];
+        char* field_null_terminated = &field_null_terminated_array[0];
+        sub_str_to_null_terminated(all_enum_identifier_values[i].identifier.text,
+                                   all_enum_identifier_values[i].identifier.length,
+                                   (char**)&field_null_terminated);
+        if (i != all_enum_identifier_values.size()-1)
+        {
+            sprintf((char*)temp,"\t\"%s\",\n", field_null_terminated);
+        }
+        else
+        {
+            sprintf((char*)temp,"\t\"%s\"\n", field_null_terminated);
+        }
+        append_to_len_string(h_file, (char*)temp);
+        
+    }
+
+    append_to_len_string(h_file, "};\n\n");
+    
+    sprintf((char*)temp,
+            "global_variable u32 %s_val_arr[] = \n",
+            enum_name_null_terminated);
+    append_to_len_string(h_file, (char*)temp);
+    append_to_len_string(h_file, "{\n");
+    for (int i = 0; i < all_enum_identifier_values.size(); i++)
+    {
+        char field_null_terminated_array[256];
+        char* field_null_terminated = &field_null_terminated_array[0];
+        sub_str_to_null_terminated(all_enum_identifier_values[i].identifier.text,
+                                   all_enum_identifier_values[i].identifier.length,
+                                   (char**)&field_null_terminated);
+        if (i != all_enum_identifier_values.size()-1)
+        {
+            sprintf((char*)temp,"\t%d,\n", all_enum_identifier_values[i].value);
+        }
+        else
+        {
+            sprintf((char*)temp,"\t%d\n", all_enum_identifier_values[i].value);
+        }
+        append_to_len_string(h_file, (char*)temp);
+        
+    }
+
+
+    append_to_len_string(h_file, "};\n\n");
+    
+    sprintf((char*)temp,
+            "global_variable u32 %s_field_count = %lld;\n",
+            enum_name_null_terminated,
+            all_enum_identifier_values.size());
+    append_to_len_string(h_file, (char*)temp);
+    
+//TODO: finish this
 }
                                         
 
@@ -228,22 +248,8 @@ int main (int argc, char** argv)
     {
         //printf("cpp or h file passed\n");
     }
-    FILE* c_file = fopen(argv[1], "r");
-    if (!c_file)
-    {
-        //printf("Failed to open file %s with error %d\n",
-        //argv[1], errno);
-    }
-    char* full_file_str = nullptr;
-    fseek (c_file, 0, SEEK_END);
-    int length = ftell (c_file);
-    fseek (c_file, 0, SEEK_SET);
-    full_file_str = (char*)malloc (length);
-    char* full_file_str_copy = (char*)malloc (length);
-    fread (full_file_str, 1, length, c_file);
-    fseek (c_file, 0, SEEK_SET);
-    fread (full_file_str_copy, 1, length, c_file);
-    fclose (c_file);
+    u64 length = 0;
+    char* full_file_str = read_entire_file_text(argv[1], &length);
 
     len_string inl_string = l_string(256);     
          
