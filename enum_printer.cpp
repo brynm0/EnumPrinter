@@ -173,6 +173,7 @@ flocal void add_enum_function_to_string(len_string* h_file,
         
     }
 
+    append_to_len_string(h_file, "\treturn -1;\n");
     append_to_len_string(h_file, "}\n\n");
     
     sprintf((char*)temp,
